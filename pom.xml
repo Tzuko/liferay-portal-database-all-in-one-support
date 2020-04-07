@@ -32,9 +32,10 @@
   </distributionManagement>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <liferay.portal.impl.version>4.12.11</liferay.portal.impl.version>
-    <liferay.portal.kernel.version>4.35.3</liferay.portal.kernel.version>
+    <liferay.portal.impl.version>5.1.6</liferay.portal.impl.version>
+    <liferay.portal.kernel.version>4.13.1</liferay.portal.kernel.version>
     <liferay.petra.lang>3.0.0</liferay.petra.lang>
+    <liferay.petra.string>3.0.0</liferay.petra.string>
   </properties>
   <developers>
     <developer>
@@ -73,6 +74,12 @@
       <groupId>com.liferay</groupId>
       <artifactId>com.liferay.petra.lang</artifactId>
       <version>${liferay.petra.lang}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.liferay</groupId>
+      <artifactId>com.liferay.petra.string</artifactId>
+      <version>${liferay.petra.string}</version>
       <scope>provided</scope>
     </dependency>
   </dependencies>
@@ -175,6 +182,12 @@
       </plugin>
     </plugins>
   </build>
+  <repositories>
+  	<repository>
+  		<id>liferay</id>
+  		<url>https://repository.liferay.com/nexus/content/repositories/liferay-public-releases</url>
+  	</repository>
+  </repositories>
   <scm>
     <connection>scm:git:git@github.com:amusarra/liferay-portal-database-all-in-one-support.git</connection>
     <url>scm:git:git@github.com:amusarra/liferay-portal-database-all-in-one-support.git</url>
