@@ -15,21 +15,13 @@
 package it.dontesta.labs.liferay.portal.dao.db;
 
 import java.io.IOException;
-import java.sql.CallableStatement;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
-import java.util.HashSet;
-import java.util.Set;
 
 import com.liferay.portal.dao.db.BaseDB;
 import com.liferay.portal.kernel.dao.db.DBType;
-import com.liferay.portal.kernel.dao.jdbc.DataAccess;
 import com.liferay.portal.kernel.io.unsync.UnsyncBufferedReader;
 import com.liferay.portal.kernel.io.unsync.UnsyncStringReader;
-import com.liferay.portal.kernel.util.CharPool;
 import com.liferay.portal.kernel.util.StringBundler;
 import com.liferay.portal.kernel.util.StringUtil;
 
@@ -48,68 +40,21 @@ public class DB2DB extends BaseDB {
 	}
 
 	@Override
-	public String buildSQL(String template) throws IOException {
-		template = convertTimestamp(template);
-		template = replaceTemplate(template, getTemplate());
+	public String getPopulateSQL(String databaseName, String sqlContent) {
+		StringBundler sb = new StringBundler(4);
 
-		template = reword(template);
-		template = removeLongInserts(template);
-		template = removeNull(template);
-		template = StringUtil.replace(template, "\\'", "''");
-		template = StringUtil.replace(template, "\\n", "'||CHR(10)||'");
+		sb.append("connect to ");
+		sb.append(databaseName);
+		sb.append(";\n");
+		sb.append(sqlContent);
 
-		return template;
+		return sb.toString();
 	}
 
 	@Override
-	public boolean isSupportsAlterColumnType() {
-		return _SUPPORTS_ALTER_COLUMN_TYPE;
-	}
-
-	@Override
-	public boolean isSupportsInlineDistinct() {
-		return _SUPPORTS_INLINE_DISTINCT;
-	}
-
-	@Override
-	public boolean isSupportsScrollableResults() {
-		return _SUPPORTS_SCROLLABLE_RESULTS;
-	}
-
-	@Override
-	public void runSQL(String template) throws IOException, SQLException {
-		if (template.startsWith(ALTER_COLUMN_NAME)) {
-			String sql = buildSQL(template);
-
-			String[] alterSqls = StringUtil.split(sql, CharPool.SEMICOLON);
-
-			for (String alterSql : alterSqls) {
-				alterSql = StringUtil.trim(alterSql);
-
-				runSQL(alterSql);
-			}
-		}
-		else {
-			super.runSQL(template);
-		}
-	}
-
-	@Override
-	public void runSQL(String[] templates) throws IOException, SQLException {
-		super.runSQL(templates);
-
-		reorgTables(templates);
-	}
-
-	@Override
-	protected String buildCreateFileContent(
-			String sqlDir, String databaseName, int population)
-		throws IOException {
-
-		String suffix = getSuffix(population);
-
-		StringBundler sb = new StringBundler(15);
-
+	public String getRecreateSQL(String databaseName) {
+		
+		StringBundler sb = new StringBundler();
 		sb.append("drop database ");
 		sb.append(databaseName);
 		sb.append(";\n");
@@ -117,121 +62,34 @@ public class DB2DB extends BaseDB {
 		sb.append(databaseName);
 		sb.append(" pagesize 32768 temporary tablespace managed by automatic ");
 		sb.append("storage;\n");
-
-		if (population != BARE) {
-			sb.append("connect to ");
-			sb.append(databaseName);
-			sb.append(";\n");
-			sb.append(getCreateTablesContent(sqlDir, suffix));
-			sb.append("\n\n");
-			sb.append(readFile(sqlDir + "/indexes/indexes-db2.sql"));
-			sb.append("\n\n");
-			sb.append(readFile(sqlDir + "/sequences/sequences-db2.sql"));
-		}
-
+		
 		return sb.toString();
 	}
 
 	@Override
-	protected String getServerName() {
-		return "db2";
+	public String buildSQL(String template) throws IOException, SQLException {
+		template = replaceTemplate(template);
+		template = reword(template);
+		
+		
+		template = StringUtil.replace(template, "\\'", "''");
+		template = StringUtil.replace(template, "\\n", "'||CHR(10)||'");
+
+		return template;
 	}
 
 	@Override
 	protected int[] getSQLTypes() {
 		return _SQL_TYPES;
 	}
-	
+
 	@Override
 	protected String[] getTemplate() {
 		return _DB2;
 	}
-	
-	protected boolean isRequiresReorgTable(Connection con, String tableName)
-		throws SQLException {
-
-		boolean reorgTableRequired = false;
-
-		PreparedStatement ps = null;
-		ResultSet rs = null;
-
-		try {
-			StringBundler sb = new StringBundler(4);
-
-			sb.append("select num_reorg_rec_alters from table(");
-			sb.append("sysproc.admin_get_tab_info(current_schema, '");
-			sb.append(StringUtil.toUpperCase(tableName));
-			sb.append("')) where reorg_pending = 'Y'");
-
-			ps = con.prepareStatement(sb.toString());
-
-			rs = ps.executeQuery();
-
-			if (rs.next()) {
-				int numReorgRecAlters = rs.getInt(1);
-
-				if (numReorgRecAlters >= 1) {
-					reorgTableRequired = true;
-				}
-			}
-		}
-		finally {
-			DataAccess.cleanUp(ps, rs);
-		}
-
-		return reorgTableRequired;
-	}
-
-	protected void reorgTable(Connection con, String tableName)
-		throws SQLException {
-
-		if (!isRequiresReorgTable(con, tableName)) {
-			return;
-		}
-
-		CallableStatement callableStatement = null;
-
-		try {
-			callableStatement = con.prepareCall("call sysproc.admin_cmd(?)");
-
-			callableStatement.setString(1, "reorg table " + tableName);
-
-			callableStatement.execute();
-		}
-		finally {
-			DataAccess.cleanUp(callableStatement);
-		}
-	}
-
-	protected void reorgTables(String[] templates) throws SQLException {
-		Set<String> tableNames = new HashSet<>();
-
-		for (String template : templates) {
-			if (template.startsWith("alter table")) {
-				tableNames.add(template.split(" ")[2]);
-			}
-		}
-
-		if (tableNames.isEmpty()) {
-			return;
-		}
-
-		Connection con = null;
-
-		try {
-			con = DataAccess.getConnection();
-
-			for (String tableName : tableNames) {
-				reorgTable(con, tableName);
-			}
-		}
-		finally {
-			DataAccess.cleanUp(con);
-		}
-	}
 
 	@Override
-	protected String reword(String data) throws IOException {
+	protected String reword(String data) throws IOException, SQLException {
 		try (UnsyncBufferedReader unsyncBufferedReader =
 				new UnsyncBufferedReader(new UnsyncStringReader(data))) {
 
@@ -274,6 +132,7 @@ public class DB2DB extends BaseDB {
 			return sb.toString();
 		}
 	}
+	
 
 	private static final String[] _DB2 = {
 		"--", "1", "0", "'1970-01-01-00.00.00.000000'", "current timestamp",
@@ -286,10 +145,4 @@ public class DB2DB extends BaseDB {
 			Types.BLOB, Types.BLOB, Types.SMALLINT, Types.TIMESTAMP, Types.DOUBLE,
 			Types.INTEGER, Types.BIGINT, Types.VARCHAR, Types.CLOB, Types.VARCHAR
 	};
-
-	private static final boolean _SUPPORTS_ALTER_COLUMN_TYPE = false;
-
-	private static final boolean _SUPPORTS_INLINE_DISTINCT = false;
-
-	private static final boolean _SUPPORTS_SCROLLABLE_RESULTS = false;
 }
